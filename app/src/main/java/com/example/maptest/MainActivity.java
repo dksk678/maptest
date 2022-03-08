@@ -10,6 +10,9 @@ import android.content.pm.PackageManager;
 import android.content.res.AssetManager;
 import android.os.Bundle;
 
+import com.example.maptest.data.FireSensor;
+import com.example.maptest.restapi.IgnoreSSL;
+import com.example.maptest.restapi.RetrofitAPI;
 import com.naver.maps.geometry.LatLng;
 import com.naver.maps.map.LocationTrackingMode;
 import com.naver.maps.map.MapView;
@@ -32,6 +35,12 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+import retrofit2.Retrofit;
+import retrofit2.converter.gson.GsonConverterFactory;
+
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback {
     private MapView mapView;
     private FusedLocationSource mLocationSource;
@@ -41,11 +50,51 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             Manifest.permission.ACCESS_COARSE_LOCATION
     };
     private NaverMap mNaverMap;
-
+    private IgnoreSSL ignoreSSL;
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        //rest api
+        //ssl 인증 무시
+        ignoreSSL = new IgnoreSSL();
+        Retrofit retrofit = new Retrofit.Builder()
+                .baseUrl("https://59.18.155.12:8443/beacon-server/")
+                .client(ignoreSSL.getUnsafeOkHttpClient().build())
+                .addConverterFactory(GsonConverterFactory.create())
+                .build();
+
+        RetrofitAPI retrofitAPI = retrofit.create(RetrofitAPI.class);
+        retrofitAPI.getData().enqueue(new Callback<FireSensor>() {
+            @Override
+            public void onResponse(Call<FireSensor> call, Response<FireSensor> response) {
+                if(response.isSuccessful()) {
+                    // 서버로부터 전달받은 데이터
+                    FireSensor sensorList = response.body();
+                    System.out.println("Sensor id = " + sensorList.list.get(0).getId());
+                    System.out.println("Sensor id = " + sensorList.list.get(1).getId());
+                    System.out.println("Sensor id = " + sensorList.list.get(2).getId());
+                    System.out.println("Sensor id = " + sensorList.list.get(3).getId());
+                    System.out.println("Sensor id = " + sensorList.list.get(4).getId());
+                    System.out.println("Sensor id = " + sensorList.list.get(5).getId());
+                    System.out.println("Sensor id = " + sensorList.list.get(6).getId());
+                    System.out.println("Sensor id = " + sensorList.list.get(7).getId());
+                    System.out.println("Sensor id = " + sensorList.list.get(8).getId());
+                    System.out.println("성공");
+                }
+            }
+
+            @Override
+            public void onFailure(Call<FireSensor> call, Throwable t) {
+                t.printStackTrace();
+                System.out.println("실패실패실패실패실패");
+            }
+        });
+
+
+
+
+        //네이버 api
         mLocationSource = new FusedLocationSource(this, PERMISSION_REQUEST_CODE);
         mapView = findViewById(R.id.map_view);
         mapView.onCreate(savedInstanceState);
@@ -90,7 +139,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             polygonOverlay.setHoles(Collections.singletonList(latlist[i]));
         }
     }
-    //GPS 현재위치
+    /*//GPS 현재위치
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
@@ -102,7 +151,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 mNaverMap.setLocationTrackingMode(LocationTrackingMode.Follow);
             }
         }
-    }
+    }*/
 
     public List<LatLng>[] getJson(String filename){
         AssetManager assetManager = getAssets();
