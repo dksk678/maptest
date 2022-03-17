@@ -3,194 +3,216 @@ package com.example.maptest;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
 
-import android.Manifest;
-import android.content.pm.PackageManager;
-import android.content.res.AssetManager;
+import android.location.Location;
 import android.os.Bundle;
 
-import com.example.maptest.data.FireSensor;
-import com.example.maptest.restapi.IgnoreSSL;
-import com.example.maptest.restapi.RetrofitAPI;
 import com.naver.maps.geometry.LatLng;
+import com.naver.maps.map.CameraAnimation;
+import com.naver.maps.map.CameraUpdate;
 import com.naver.maps.map.LocationTrackingMode;
 import com.naver.maps.map.MapView;
 import com.naver.maps.map.NaverMap;
 import com.naver.maps.map.OnMapReadyCallback;
 import com.naver.maps.map.UiSettings;
-import com.naver.maps.map.overlay.PolygonOverlay;
+import com.naver.maps.map.overlay.LocationOverlay;
+import com.naver.maps.map.overlay.Marker;
+import com.naver.maps.map.overlay.OverlayImage;
 import com.naver.maps.map.util.FusedLocationSource;
 
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
+import org.altbeacon.beacon.Beacon;
+import org.altbeacon.beacon.BeaconConsumer;
+import org.altbeacon.beacon.BeaconManager;
+import org.altbeacon.beacon.BeaconParser;
+import org.altbeacon.beacon.RangeNotifier;
+import org.altbeacon.beacon.Region;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
+import android.os.Handler;
+import android.os.Message;
+import android.os.RemoteException;
+import android.util.Log;
+import android.view.View;
+import android.widget.*;
 
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
-import retrofit2.Retrofit;
-import retrofit2.converter.gson.GsonConverterFactory;
+import java.util.*;
+/*
+  맥주소 or uuid비교 후 major, minor 값 비교해서 지도의 해당되는 위치에 뿌려주기.
+ */
 
-public class MainActivity extends AppCompatActivity implements OnMapReadyCallback {
+public class MainActivity extends AppCompatActivity implements OnMapReadyCallback,BeaconConsumer {
     private MapView mapView;
+
+    private static final int PERMISSION_REQUEST_CODE = 1000;
     private FusedLocationSource mLocationSource;
-    private static final int PERMISSION_REQUEST_CODE = 100;
-    private static final String[] PERMISSIONS = {
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION
-    };
-    private NaverMap mNaverMap;
-    private IgnoreSSL ignoreSSL;
+    private NaverMap naverMap;
+    private BeaconManager beaconManager;
+    private static final String TAG = "Beacontest";
+    //    private Beacon beacon;
+    TextView textView;
+    private List<Beacon> beaconList = new ArrayList<>();
+    private RssiCompare comp = new RssiCompare();
+    private BeaconCoordinate bc;
+    private LatLng cor;
+    private Marker marker;
+    private int beaconchk = 0;
+
+    private Location location;
+
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        //rest api
-        //ssl 인증 무시
-        ignoreSSL = new IgnoreSSL();
-        Retrofit retrofit = new Retrofit.Builder()
-                .baseUrl("https://59.18.155.12:8443/beacon-server/")
-                .client(ignoreSSL.getUnsafeOkHttpClient().build())
-                .addConverterFactory(GsonConverterFactory.create())
-                .build();
 
-        RetrofitAPI retrofitAPI = retrofit.create(RetrofitAPI.class);
-        retrofitAPI.getData().enqueue(new Callback<FireSensor>() {
-            @Override
-            public void onResponse(Call<FireSensor> call, Response<FireSensor> response) {
-                if(response.isSuccessful()) {
-                    // 서버로부터 전달받은 데이터
-                    FireSensor sensorList = response.body();
-                    System.out.println("Sensor id = " + sensorList.list.get(0).getId());
-                    System.out.println("Sensor id = " + sensorList.list.get(1).getId());
-                    System.out.println("Sensor id = " + sensorList.list.get(2).getId());
-                    System.out.println("Sensor id = " + sensorList.list.get(3).getId());
-                    System.out.println("Sensor id = " + sensorList.list.get(4).getId());
-                    System.out.println("Sensor id = " + sensorList.list.get(5).getId());
-                    System.out.println("Sensor id = " + sensorList.list.get(6).getId());
-                    System.out.println("Sensor id = " + sensorList.list.get(7).getId());
-                    System.out.println("Sensor id = " + sensorList.list.get(8).getId());
-                    System.out.println("성공");
-                }
-            }
-
-            @Override
-            public void onFailure(Call<FireSensor> call, Throwable t) {
-                t.printStackTrace();
-                System.out.println("실패실패실패실패실패");
-            }
-        });
-
-
-
-
-        //네이버 api
-        mLocationSource = new FusedLocationSource(this, PERMISSION_REQUEST_CODE);
         mapView = findViewById(R.id.map_view);
         mapView.onCreate(savedInstanceState);
-        naverMapBasicSettings();
-    }
-
-    public void naverMapBasicSettings() {
         mapView.getMapAsync(this);
+
+        beaconManager = BeaconManager.getInstanceForApplication(this);
+//        textView = (TextView) findViewById(R.id.tv_message);//비콘검색후 검색내용 뿌려주기위한 textview
+
+        // ibeacon layout
+        beaconManager.getBeaconParsers().add(new BeaconParser().
+                setBeaconLayout("m:2-3=0215,i:4-19,i:20-21,i:22-23,p:24-24"));
+        beaconManager.bind(this);
+
+        mLocationSource = new FusedLocationSource(this, PERMISSION_REQUEST_CODE);
+
     }
-    //맵 설정(유형, 오버레이, 버튼)
-    @Override
-    public void onMapReady(@NonNull final NaverMap naverMap) {
 
-        mNaverMap = naverMap;
-
-        // 현재 위치 버튼 안보이게 설정
-        UiSettings uiSettings = naverMap.getUiSettings();
-        uiSettings.setLocationButtonEnabled(true);
-
-        // NaverMap 객체 받아서 NaverMap 객체에 위치 소스 지정
-        mNaverMap.setLocationSource(mLocationSource);
-
-        // 권한확인. 결과는 onRequestPermissionsResult 콜백 매서드 호출
-        ActivityCompat.requestPermissions(this, PERMISSIONS, PERMISSION_REQUEST_CODE);
-
-        // 지도 유형 설정
-        naverMap.setMapType(NaverMap.MapType.Basic);
-        List<LatLng>[] latlist = getJson("yongin_dongwon_royal.json");
-
-        for(int i=0; i<latlist.length; i++){
-            PolygonOverlay polygonOverlay = new PolygonOverlay();
-
-            polygonOverlay.setCoords(latlist[i]);
-            polygonOverlay.setOutlineWidth(2);
-            polygonOverlay.setMap(naverMap);
-
-        }
-        latlist = getJson("yongin_dongwon_royal_hole.json");
-        for(int i=0; i<latlist.length; i++){
-            PolygonOverlay polygonOverlay = new PolygonOverlay();
-
-            polygonOverlay.setHoles(Collections.singletonList(latlist[i]));
-        }
-    }
-    /*//GPS 현재위치
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-
         // request code와 권한획득 여부 확인
-        if (requestCode == PERMISSION_REQUEST_CODE) {
-            if (grantResults.length > 0
-                    && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                mNaverMap.setLocationTrackingMode(LocationTrackingMode.Follow);
+        if (mLocationSource.onRequestPermissionsResult(
+                requestCode, permissions, grantResults)) {
+            if (!mLocationSource.isActivated()) { // 권한 거부됨
+                naverMap.setLocationTrackingMode(LocationTrackingMode.None);
             }
+            return;
         }
-    }*/
+        super.onRequestPermissionsResult(
+                requestCode, permissions, grantResults);
+    }
 
-    public List<LatLng>[] getJson(String filename){
-        AssetManager assetManager = getAssets();
-        List<LatLng>[] list = new List[0];
-        try{
-            InputStream is = assetManager.open(filename);
-            InputStreamReader isr = new InputStreamReader(is);
-            BufferedReader reader = new BufferedReader(isr);
+    @Override
+    public void onMapReady(@NonNull NaverMap naverMap) {
+        this.naverMap = naverMap;
+        // 지도 유형 위성사진으로 설정
+//        System.out.println("맵 세팅");
+//        naverMap = this.naverMap;
+        //위치 세팅
+        naverMap.setLocationSource(mLocationSource); //현재 위치 추적기능
+        naverMap.setLocationTrackingMode(LocationTrackingMode.Follow);
 
-            StringBuffer buffer = new StringBuffer();
-            String line = reader.readLine();
-            while(line != null){
-                buffer.append(line + "\n");
-                line=reader.readLine();
-            }
-            String jsonData = buffer.toString();
+//        naverMap.addOnLocationChangeListener(location ->
+//                Toast.makeText(this,
+//                        location.getLatitude() + ", " + location.getLongitude()+", " + location.getBearing(),
+//                        Toast.LENGTH_SHORT).show());
+        // 현재 위치 버튼 안보이게 설정
+        naverMap.setMapType(NaverMap.MapType.Basic);
+        UiSettings uiSettings = naverMap.getUiSettings();
+        uiSettings.setLocationButtonEnabled(true);
+    }
 
+    private void setMarker(Marker marker, LatLng cor, int resourceID, int zIndex) {
+        //원근감 표시
+        marker.setIconPerspectiveEnabled(true);
+        //아이콘 지정
+        marker.setIcon(OverlayImage.fromResource(resourceID));
+        //마커의 투명도
+        marker.setAlpha(0.8f);
+        //마커 위치
+        marker.setPosition(cor);
+        //마커 우선순위
+        marker.setZIndex(zIndex);
+        //마커 표시
+    }
 
-            JSONArray jsonArray = new JSONArray(jsonData);
-            list = new ArrayList[jsonArray.length()];
+    public void onLocationChanged(Location location, LatLng cor) {
+        if (naverMap == null)  { // || location == null
+            Log.i(TAG, " return "+ naverMap + " "+ location);
+            return;
+        }
+        Log.i(TAG, " "+cor +" "+beaconchk + " "+ location);
+        LocationOverlay locationOverlay = naverMap.getLocationOverlay();
+        locationOverlay.setVisible(true); // 오버레이 활성화
+        locationOverlay.setPosition(cor); // 현재 위치 조정
+//        locationOverlay.setBearing(location.getBearing());
 
-            for(int i=0; i<jsonArray.length(); i++){
-                list[i] = new ArrayList<>();
-                JSONObject jsonObject = jsonArray.getJSONObject(i);
-                JSONObject geometry = (JSONObject) jsonObject.get("geometry");
-                JSONArray jsonArray1 = geometry.getJSONArray("coordinates");
+        naverMap.moveCamera(CameraUpdate.scrollTo(cor));
+    }
 
-                for(int j=0; j<jsonArray1.getJSONArray(0).length(); j++){
-                    String str = jsonArray1.getJSONArray(0).get(j).toString();
-                    String str2 = str.substring(1, str.length()-2);
-                    String[] strarr = str2.split(",");
-                    list[i].add(new LatLng(Double.parseDouble(strarr[1]),Double.parseDouble(strarr[0])));
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        beaconManager.unbind(this);
+    }
+
+//    @Override
+//    public void onDenied(int i, String[] strings) {
+//    }
+//
+//    @Override
+//    public void onGranted(int i, String[] strings) {
+//    }
+
+    /*
+    비콘 테스트용
+     */
+    @Override
+    public void onBeaconServiceConnect() {
+        beaconManager.setRangeNotifier(new RangeNotifier() {
+            @Override
+            public void didRangeBeaconsInRegion(Collection<Beacon> beacons, Region region) {
+                if (beacons.size() > 0) {
+                    beaconList.clear();
+                    beaconchk = 5; // 비콘을 불러오면 5번까지 재탐색
+                    //비콘 리스트에 비콘 정보 저장
+                    for (Beacon beacon : beacons) {
+                        beaconList.add(beacon);
+                    }
+                    //rssi값 오름차순으로 비콘리스트 정렬
+                    Collections.sort(beaconList, comp);
+                    //가장 짧은 거리의 비콘 정보 가져오기
+                    bc = new BeaconCoordinate((beaconList.get(0).getId3().toInt()));
+                    //비콘정보를 통해 좌표 수정
+                    cor = bc.setCoordinate();
+                } else { //비콘 못찾았으면 -1
+                    beaconchk -= 1;
+                }
+                int as;
+                if(beaconchk>=1){ //비콘값이 한개라도 나오면
+                    //위치 변경
+                    onLocationChanged(location, cor);
+                    //비콘이 잡히면 트래킹모드 끔.
+                    naverMap.setLocationTrackingMode(LocationTrackingMode.None);
                 }
             }
-        } catch (JSONException e) {
-            e.printStackTrace();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return list;
+        });
+        try {
+            beaconManager.startRangingBeaconsInRegion(new Region("beacon", null, null, null));
+        } catch (RemoteException e) {}
     }
+//    public void OnButtonClicked(View view){
+//        // 아래에 있는 handleMessage를 부르는 함수. 맨 처음에는 0초간격이지만 한번 호출되고 나면
+//        // 1초마다 불러온다.
+//        handler.sendEmptyMessage(0);
+//    }
+//    Handler handler = new Handler() {
+//        public void handleMessage(Message msg) {
+//            textView.setText("");
+//
+//            // 비콘의 아이디와 거리를 측정하여 textView에 넣는다.
+////            Arrays.sort(beaconList, (o1, o2) ->(o1.getC));
+//            Collections.sort(beaconList, comp); //rssi 기준으로 정렬
+//
+////            for(Beacon beacon : beaconList){
+//////                textView.append("adress : " + beacon.getBluetoothAddress() + " / " + "minor : " + beacon.getId3() + " / "+ "Distance : " + Double.parseDouble(String.format("%.3f", beacon.getDistance())) + "m\n");
+////            }
+//
+//            // 자기 자신을 1초마다 호출
+//            handler.sendEmptyMessageDelayed(0, 500);//0.5초
+//        }
+//    };
+
 }

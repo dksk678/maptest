@@ -40,4 +40,12 @@ dependencies {
     implementation 'com.google.android.gms:play-services-location:17.0.0'
     implementation 'com.squareup.retrofit2:retrofit:2.6.0'
     implementation 'com.squareup.retrofit2:converter-gson:2.6.0'
+
+    implementation 'com.naver.maps:map-sdk:3.14.0'
+    implementation 'com.google.android.gms:play-services-location:19.0.1'
+
+//    implementation 'com.github.pedroSG94:AutoPermissions:1.0.3' // permission
+    implementation 'org.altbeacon:android-beacon-library:2+' // altbeacon
+//noinspection GradleCompatible
+    implementation 'com.android.support:localbroadcastmanager:28.0.0'
 }
