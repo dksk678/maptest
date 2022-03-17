@@ -74,6 +74,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         beaconManager.getBeaconParsers().add(new BeaconParser().
                 setBeaconLayout("m:2-3=0215,i:4-19,i:20-21,i:22-23,p:24-24"));
         beaconManager.bind(this);
+        //ALTBEACON      m:2-3=beac,i:4-19,i:20-21,i:22-23,p:24-24,d:25-25
 
         mLocationSource = new FusedLocationSource(this, PERMISSION_REQUEST_CODE);
 
@@ -114,7 +115,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         uiSettings.setLocationButtonEnabled(true);
     }
 
-    private void setMarker(Marker marker, LatLng cor, int resourceID, int zIndex) {
+/*    private void setMarker(Marker marker, LatLng cor, int resourceID, int zIndex) {
         //원근감 표시
         marker.setIconPerspectiveEnabled(true);
         //아이콘 지정
@@ -126,7 +127,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         //마커 우선순위
         marker.setZIndex(zIndex);
         //마커 표시
-    }
+    }*/
 
     public void onLocationChanged(Location location, LatLng cor) {
         if (naverMap == null)  { // || location == null
